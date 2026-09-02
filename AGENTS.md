@@ -3,6 +3,7 @@
 ## Start Here
 
 - Read this file, `ARCHITECTURE.md`, `docs/PRODUCT.md`, `docs/DECISIONS.md`, and `docs/BASELINE.md` before changing code.
+- For the active local-first implementation sequence, read `docs/plans/LOCAL_FIRST_RECOGNITION.md`.
 - Treat `ARCHITECTURE.md` as a description of the checked-in implementation. Treat accepted decisions marked "pending implementation" as targets, not as claims about current behavior.
 - Inspect the relevant production path and its tests before editing. The README is product-facing and is not a substitute for code inspection.
 
