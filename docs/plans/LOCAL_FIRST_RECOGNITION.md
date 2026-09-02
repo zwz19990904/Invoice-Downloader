@@ -1,10 +1,22 @@
 # Local-First Recognition Execution Plan
 
-**Status:** Phase 1 design complete; implementation not started
+**Status:** Phase 2A complete; Phase 2B is next
 
 **Planning baseline:** `e02fa43`
 
 **Scope:** Incrementally add Local, Hybrid, and Cloud recognition without replacing the existing mail, candidate, archive, pairing, naming, or reporting pipelines.
+
+## Implementation progress
+
+- [x] Add strict Local, Hybrid, and Cloud modes with Local as the fail-closed default.
+- [x] Add immutable per-run recognition policy and explicit GLM/DeepSeek provider IDs.
+- [x] Persist normalized non-secret recognition settings.
+- [x] Remove the API-key requirement from Local admission and frontend start validation.
+- [x] Require an explicit supported provider and credential for Cloud/Hybrid admission.
+- [x] Guard the existing GLM extractor behind a mode-aware router in the desktop run path.
+- [x] Prevent Hybrid from bypassing the unfinished local stage.
+- [x] Route locally unresolved documents to manual review until text evidence and the local provider are implemented.
+- [ ] Add local text evidence acquisition (Phase 2B).
 
 ## 1. Non-negotiable invariants
 
@@ -173,6 +185,8 @@ The first real model download is an explicit runtime event with progress/error r
 ## 8. Implementation phases and commits
 
 ### Phase 2A — Policy foundation
+
+**Complete.**
 
 - Add enums, immutable policy, parsing, fail-closed cloud guard, and unit tests.
 - Add settings defaults and backward-compatible save/load behavior.

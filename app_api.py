@@ -22,6 +22,11 @@ from email_channel import resolve_channel
 from frontend_run_context import ensure_run_context_dirs, load_run_context, make_run_staging_dir, serialize_run_context
 from glm_runtime import GlmRequestError, GlmRuntime
 from report_service import ReportService
+from recognition_policy import (
+    CloudProviderId,
+    RecognitionPolicy,
+    RecognitionPolicyError,
+)
 from run_coordinator import RunCoordinator, RunDependencies, RunRequest
 from run_lifecycle import RunLifecycle, RunState
 from run_state_store import RunStateStore
@@ -2197,7 +2202,7 @@ class InvoiceAppAPI:
         }
 
     def _default_user_settings(self):
-        return {
+        defaults = {
             "email": "",
             "auth_code": "",
             "api_key": "",
@@ -2210,6 +2215,8 @@ class InvoiceAppAPI:
             "glm_model_candidates": copy.deepcopy(DEFAULT_GLM_MODEL_CANDIDATES),
             "remember_settings": True,
         }
+        defaults.update(RecognitionPolicy().to_settings())
+        return defaults
 
     def load_user_settings(self):
         self._refresh_run_context()
@@ -2218,6 +2225,7 @@ class InvoiceAppAPI:
 
         merged = dict(defaults)
         merged.update({key: value for key, value in (stored or {}).items() if key in merged})
+        merged.update(RecognitionPolicy.from_settings(merged).to_settings())
         merged["save_path"] = self._normalize_user_save_path(merged.get("save_path", ""))
 
         return {
@@ -2237,6 +2245,7 @@ class InvoiceAppAPI:
             merged["remember_settings"] = True
         else:
             merged["remember_settings"] = False
+        merged.update(RecognitionPolicy.from_settings(merged).to_settings())
         merged["save_path"] = self._normalize_user_save_path(merged.get("save_path", ""))
         self._settings_store.save(merged)
         return {"success": True, "message": "设置已保存", "path": self._settings_store.settings_path}
@@ -2369,6 +2378,7 @@ class InvoiceAppAPI:
         email_address,
         auth_code,
         api_key,
+        recognition_policy=None,
     ):
         from datetime import datetime, timedelta
         import inspect
@@ -2377,7 +2387,12 @@ class InvoiceAppAPI:
         from invoice_extractor import InvoiceExtractor
         from run_evidence import RunEvidenceWriter
 
-        resources = {"fetcher": None, "pipeline": None}
+        recognition_policy = recognition_policy or RecognitionPolicy.from_settings({})
+        resources = {
+            "fetcher": None,
+            "pipeline": None,
+            "recognition_policy": recognition_policy,
+        }
 
         account_label = f"{request.channel_id}:{request.account_id}"
 
@@ -2479,6 +2494,7 @@ class InvoiceAppAPI:
                 request.rules_text,
                 _extractor=extractor,
                 _owned_extractor=extractor,
+                _recognition_policy=recognition_policy,
             )
             resources["pipeline"] = pipeline
             return pipeline.extract()
@@ -2657,6 +2673,7 @@ class InvoiceAppAPI:
         _archive_operation=None,
         _pairing_finalizer=None,
         _owned_extractor=None,
+        _recognition_policy=None,
     ):
         from app_archive_adapter import AppArchiveAdapter
         from archive_service import ArchiveService
@@ -2717,6 +2734,20 @@ class InvoiceAppAPI:
             since_date=since_date,
             before_date=before_date,
         )
+        recognizer = remote
+        if _recognition_policy is not None:
+            from recognition_router import ModeAwareRecognitionExtractor
+
+            def _prepared_artifact_path(candidate):
+                with sidecar_lock:
+                    prepared = sidecar.get(candidate.identity.document_id, {})
+                    return str(prepared.get("pdf_path") or candidate.source_path)
+
+            recognizer = ModeAwareRecognitionExtractor(
+                policy=_recognition_policy,
+                cloud_extractors={CloudProviderId.GLM: remote},
+                artifact_path_resolver=_prepared_artifact_path,
+            )
 
         def _progress(completed, total, percent):
             self.progress = min(90, 45 + int(percent * 0.45))
@@ -2753,9 +2784,9 @@ class InvoiceAppAPI:
 
         pipeline = ExtractionPipeline(
             local_parser=preflight,
-            remote_extractor=remote,
+            remote_extractor=recognizer,
             max_workers=2,
-            verified_ceiling=remote.verified_ceiling,
+            verified_ceiling=recognizer.verified_ceiling,
             stop_requested=lambda: bool(getattr(self, "_stop_requested", False)),
             progress_callback=_progress,
             trace_sink=_trace,
@@ -3689,6 +3720,7 @@ class InvoiceAppAPI:
             settings_touched = False
             handle = None
             dependencies = None
+            recognition_policy = None
             admission_missing_dirs = ()
             try:
                 self._run_context = candidate.run_context()
@@ -3706,6 +3738,11 @@ class InvoiceAppAPI:
                     raise RevisionUnavailable()
                 ensure_run_context_dirs(self._run_context)
                 previous_settings = self._settings_store.load() or {}
+                recognition_policy = RecognitionPolicy.from_settings(previous_settings)
+                recognition_policy.validate_for_admission(
+                    credentials={CloudProviderId.GLM: bool(secrets.api_key)},
+                    supported_cloud_providers={CloudProviderId.GLM},
+                )
                 self._requested_save_path = candidate.requested_save_path
                 self._effective_save_path = candidate.effective_save_path
                 self._effective_date_from = candidate.date_from
@@ -3719,6 +3756,12 @@ class InvoiceAppAPI:
                     "date_from": candidate.date_from,
                     "date_to": candidate.date_to,
                     "started_at": candidate.started_at,
+                    "recognition_mode": recognition_policy.mode.value,
+                    "cloud_provider": (
+                        recognition_policy.cloud_provider.value
+                        if recognition_policy.cloud_provider is not None
+                        else ""
+                    ),
                 }
 
                 os.makedirs(candidate.effective_save_path, exist_ok=True)
@@ -3732,6 +3775,7 @@ class InvoiceAppAPI:
                         "date_to": candidate.date_to,
                         "company": active_company,
                         "remember_settings": True,
+                        **recognition_policy.to_settings(),
                     }
                     if remember_settings
                     else {"remember_settings": False}
@@ -3781,6 +3825,7 @@ class InvoiceAppAPI:
                     email_address=secrets.email_address,
                     auth_code=secrets.auth_code,
                     api_key=secrets.api_key,
+                    recognition_policy=recognition_policy,
                 )
                 self._safe_write_run_config(
                     secrets.email_address,
@@ -3806,7 +3851,14 @@ class InvoiceAppAPI:
                     settings_touched,
                 )
                 self._remove_empty_admission_directories(admission_missing_dirs)
-                return {"success": False, "message": "后台任务启动失败"}
+                return {
+                    "success": False,
+                    "message": (
+                        exc.user_message
+                        if isinstance(exc, RecognitionPolicyError)
+                        else "后台任务启动失败"
+                    ),
+                }
 
             self._run_state_store.append_log(
                 "信息",
@@ -3904,8 +3956,8 @@ class InvoiceAppAPI:
         if not self._run_lifecycle.can_begin or self._is_running or (self._worker_thread and self._worker_thread.is_alive()):
             return {"success": False, "message": "任务已在运行中"}
 
-        if not email_address or not auth_code or not api_key:
-            return {"success": False, "message": "缺少必要凭证，请填写邮箱、授权码和 API Key"}
+        if not email_address or not auth_code:
+            return {"success": False, "message": "缺少必要凭证，请填写邮箱和授权码"}
 
         candidate, secrets, date_error = self._build_admission_candidate(
             rules_text=rules_text,

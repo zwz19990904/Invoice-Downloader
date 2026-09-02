@@ -37,6 +37,8 @@ const engineSourceFiles = [
   'pinned_http.py',
   'provider_baiwang.py',
   'provider_direct_invoice.py',
+  'recognition_policy.py',
+  'recognition_router.py',
   'report_service.py',
   'run_coordinator.py',
   'run_evidence.py',

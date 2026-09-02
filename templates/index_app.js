@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
     email: "",
     auth_code: "",
     api_key: "",
+    recognition_mode: "local",
+    cloud_provider: "",
+    local_model_source: "mlx-community/Qwen3-1.7B-4bit",
+    local_model_max_tokens: 768,
+    local_confidence_threshold: "0.80",
     save_path: "",
     company: "",
     remember_settings: true,
@@ -340,6 +345,11 @@ async function loadShellState() {
         // Sensitive values must not be revived from WebView session state.
         auth_code: preferNonEmpty(storedPayload.auth_code),
         api_key: preferNonEmpty(storedPayload.api_key),
+        recognition_mode: preferNonEmpty(storedPayload.recognition_mode, "local"),
+        cloud_provider: preferNonEmpty(storedPayload.cloud_provider),
+        local_model_source: preferNonEmpty(storedPayload.local_model_source, "mlx-community/Qwen3-1.7B-4bit"),
+        local_model_max_tokens: storedPayload.local_model_max_tokens || 768,
+        local_confidence_threshold: preferNonEmpty(storedPayload.local_confidence_threshold, "0.80"),
         save_path: preferNonEmpty(sessionSettings.save_path, storedPayload.save_path),
         company: preferNonEmpty(sessionSettings.company, storedPayload.company),
         remember_settings: sessionSettings.remember_settings === undefined
@@ -377,6 +387,9 @@ async function persistUserSettings(settings, runSettings, runContext) {
         email: payload.email || "",
         save_path: payload.save_path || "",
         company: payload.company || "",
+        recognition_mode: payload.recognition_mode || "local",
+        cloud_provider: payload.cloud_provider || "",
+        local_model_source: payload.local_model_source || "mlx-community/Qwen3-1.7B-4bit",
         remember_settings: payload.remember_settings !== false,
     });
     writeSessionValue(SESSION_RUN_SETTINGS_KEY, {
@@ -875,9 +888,10 @@ function SettingsPage({ onOpenDisclaimer }) {
     const controlledRun = hasExplicitQaRunContext(runContext);
     const emailParts = splitEmailAddress(settings.email);
     const dateError = validateDateRange(runSettings.date_from, runSettings.date_to);
+    const cloudKeyRequired = settings.recognition_mode === "hybrid" || settings.recognition_mode === "cloud";
     const canStart = !validateEmail(settings.email)
         && !!settings.auth_code
-        && !!settings.api_key
+        && (!cloudKeyRequired || !!settings.api_key)
         && !!String(settings.company || "").trim()
         && !!String(settings.save_path || "").trim()
         && !dateError;
@@ -963,7 +977,7 @@ function SettingsPage({ onOpenDisclaimer }) {
         const emailError = validateEmail(settings.email);
         if (emailError) return setPageError(emailError);
         if (!settings.auth_code) return setPageError("请输入邮箱授权码。");
-        if (!settings.api_key) return setPageError("请输入 GLM API Key。");
+        if (cloudKeyRequired && !settings.api_key) return setPageError("当前识别模式需要 GLM API Key。");
         if (!settings.company || !settings.company.trim()) return setPageError("请填写公司名称。");
         if (!settings.save_path) return setPageError("请选择输出目录。");
         if (dateError) return setPageError(dateError);
@@ -1079,7 +1093,7 @@ function SettingsPage({ onOpenDisclaimer }) {
 
                     <div className="settings-column">
                         <section className="surface-card">
-                            <SectionHeader icon="psychology" title="智能处理引擎" indicator={<StatusPill tone="success" icon="auto_awesome">GLM</StatusPill>} />
+                            <SectionHeader icon="psychology" title="智能处理引擎" indicator={<StatusPill tone="info" icon="shield">本地优先</StatusPill>} />
                             <div className="card-stack card-stack--compact">
                                 <div className="field-block">
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1097,7 +1111,7 @@ function SettingsPage({ onOpenDisclaimer }) {
                                             <span>{apiStatus.status === "testing" ? "测试中..." : "测试 API Key"}</span>
                                         </button>
                                     </div>
-                                    {apiStatus.status === "idle" ? <p className="field-help">额度不足时会直接提示，后续处理页也会同步显示 quota 相关警告。</p> : null}
+                                    {apiStatus.status === "idle" ? <p className="field-help">本地模式无需 API Key；云端识别功能将在主动选择后使用此凭证。</p> : null}
                                     {apiStatus.status !== "idle" ? <InlineStatus tone={toneFromAsyncStatus(apiStatus.status)}>{apiStatus.message}</InlineStatus> : null}
                                 </div>
                             </div>

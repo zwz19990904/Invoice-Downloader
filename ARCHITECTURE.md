@@ -2,6 +2,12 @@
 
 This document describes the implementation at baseline commit `1b884e96775b04acc35518ddcd52be8abe6b00fd`. It does not claim that the planned local-first MLX design is already implemented.
 
+## Post-baseline local-first foundation
+
+Phase 2A adds `recognition_policy.py` and `recognition_router.py`. Desktop run admission now freezes a normalized recognition policy and passes it to the extraction session. Missing or invalid mode settings resolve to Local, and Local admission requires mailbox credentials but no AI API key.
+
+The existing GLM extractor is reachable from the desktop run path only when the frozen policy explicitly permits the selected GLM provider. Local and Hybrid do not bypass the unfinished local provider: a document that deterministic parsing cannot yet resolve enters manual review with `LOCAL_RECOGNITION_NOT_READY`. Native text acquisition, RapidOCR, MLX/Qwen extraction, validation statuses, complete Hybrid fallback, and DeepSeek adaptation remain pending.
+
 ## Runtime Surfaces
 
 The repository ships two user-facing surfaces over one mostly shared Python engine:

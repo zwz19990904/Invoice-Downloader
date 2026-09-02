@@ -1,12 +1,14 @@
 # Architecture Decision Log
 
-These decisions govern this fork. “Accepted, pending implementation” means future work must follow the decision, but the baseline code does not yet satisfy it.
+These decisions govern this fork. “Accepted, pending implementation” means future work must follow the decision, but the baseline code does not yet satisfy it. “Partially implemented” records an incomplete migration and does not relax the remaining requirements.
 
 ## DEC-001 — Local recognition is the default
 
-**Status:** Accepted, pending implementation
+**Status:** Accepted, partially implemented
 
 Local, Hybrid, and Cloud are explicit modes. Local is the default and functions without any AI API key. Cloud transmission cannot be enabled by fallback, migration, or error handling.
+
+Phase 2A implements the fail-closed policy, settings normalization, no-key Local admission, and the desktop GLM guard. Local OCR/LLM extraction remains pending.
 
 **Why:** Invoice contents are sensitive, and the owner prefers a complete local workflow. Explicit modes also make privacy behavior testable.
 
@@ -36,9 +38,11 @@ Keep existing regex/template/provider parsers. Run deterministic parsing and the
 
 ## DEC-005 — Cloud providers remain optional
 
-**Status:** Accepted, pending implementation
+**Status:** Accepted, partially implemented
 
 Preserve GLM and DeepSeek behind a provider interface. Hybrid may call the selected provider only after a local result fails an explicit gate. Cloud may call it directly after explicit user selection. A single-file review action may also select one provider explicitly.
+
+Phase 2A guards the existing desktop GLM path behind an explicit policy. DeepSeek adaptation, complete Hybrid fallback, and re-recognition remain pending.
 
 **Why:** Difficult documents still benefit from cloud models, and preserving upstream capability lowers migration risk.
 

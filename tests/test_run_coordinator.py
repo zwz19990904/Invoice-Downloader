@@ -1159,7 +1159,7 @@ def test_missing_credentials_keeps_idle_legacy_and_frontend_parity(tmp_path: Pat
     result = api.start_processing("", str(tmp_path), email_address="", auth_code="", api_key="")
     frontend = api.get_progress()
 
-    assert result == {"success": False, "message": "缺少必要凭证，请填写邮箱、授权码和 API Key"}
+    assert result == {"success": False, "message": "缺少必要凭证，请填写邮箱和授权码"}
     assert api.run_state == frontend["run_state"] == "idle"
     assert frontend["logs"] == api.logs == []
     assert api._run_lifecycle.can_begin is True
