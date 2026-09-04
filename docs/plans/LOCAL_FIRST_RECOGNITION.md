@@ -1,6 +1,6 @@
 # Local-First Recognition Execution Plan
 
-**Status:** Phase 2A complete; Phase 2B is next
+**Status:** Phase 2B complete; Phase 2C is next
 
 **Planning baseline:** `e02fa43`
 
@@ -16,7 +16,12 @@
 - [x] Guard the existing GLM extractor behind a mode-aware router in the desktop run path.
 - [x] Prevent Hybrid from bypassing the unfinished local stage.
 - [x] Route locally unresolved documents to manual review until text evidence and the local provider are implemented.
-- [ ] Add local text evidence acquisition (Phase 2B).
+- [x] Add local text evidence acquisition with native PDF text taking priority.
+- [x] Add lazy RapidOCR/ONNX loading for textless PDFs and supported images.
+- [x] Preserve OCR page indexes, bounding boxes, per-span confidence, and aggregate confidence.
+- [x] Disable ONNX Runtime telemetry before local OCR initialization.
+- [x] Keep Local-mode candidates from preparing cloud image payloads.
+- [ ] Add MLX/Qwen local field extraction (Phase 2C).
 
 ## 1. Non-negotiable invariants
 
@@ -197,8 +202,10 @@ Expected commit: `feat: add fail-closed recognition policy`
 
 ### Phase 2B — Local text evidence
 
+**Complete.**
+
 - Add native text usability checks and immutable OCR evidence types.
-- Port/reuse the DSH RapidOCR singleton without importing it from packaged runtime output.
+- Reuse the DSH RapidOCR approach through a lazy run-owned engine without importing packaged runtime output.
 - Prevent OCR when a PDF has usable native text.
 - Add image/PDF/XML fixtures and OCR-invocation tests.
 

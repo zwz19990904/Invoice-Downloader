@@ -6,7 +6,9 @@ This document describes the implementation at baseline commit `1b884e96775b04acc
 
 Phase 2A adds `recognition_policy.py` and `recognition_router.py`. Desktop run admission now freezes a normalized recognition policy and passes it to the extraction session. Missing or invalid mode settings resolve to Local, and Local admission requires mailbox credentials but no AI API key.
 
-The existing GLM extractor is reachable from the desktop run path only when the frozen policy explicitly permits the selected GLM provider. Local and Hybrid do not bypass the unfinished local provider: a document that deterministic parsing cannot yet resolve enters manual review with `LOCAL_RECOGNITION_NOT_READY`. Native text acquisition, RapidOCR, MLX/Qwen extraction, validation statuses, complete Hybrid fallback, and DeepSeek adaptation remain pending.
+The existing GLM extractor is reachable from the desktop run path only when the frozen policy explicitly permits the selected GLM provider. Local and Hybrid do not bypass the unfinished local provider: a document that deterministic parsing cannot yet resolve enters manual review with `LOCAL_RECOGNITION_NOT_READY`.
+
+Phase 2B adds `local_text_extractor.py`. It can create immutable local evidence from XML, usable native PDF text, or RapidOCR output. In the desktop pipeline, valid XML remains on the existing deterministic path while unresolved Local/Hybrid PDF and JPG/JPEG/PNG candidates use the new evidence layer. OCR evidence retains page indexes, bounding boxes, per-span confidence, and aggregate confidence. The RapidOCR instance is loaded lazily once per run-owned extractor, and ONNX Runtime telemetry is disabled before initialization. Local mode does not prepare the Base64 image payload used by cloud vision extraction. MLX/Qwen extraction, validation statuses, complete Hybrid fallback, DeepSeek adaptation, and OFD ingestion remain pending.
 
 ## Runtime Surfaces
 

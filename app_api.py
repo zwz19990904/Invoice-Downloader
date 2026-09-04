@@ -24,6 +24,7 @@ from glm_runtime import GlmRequestError, GlmRuntime
 from report_service import ReportService
 from recognition_policy import (
     CloudProviderId,
+    RecognitionMode,
     RecognitionPolicy,
     RecognitionPolicyError,
 )
@@ -2715,6 +2716,19 @@ class InvoiceAppAPI:
                     close_glm_runtime=False,
                 )
 
+        text_extractor = None
+        prepare_remote_images = True
+        if (
+            _recognition_policy is not None
+            and _recognition_policy.uses_local_recognition
+        ):
+            from local_text_extractor import LocalTextExtractor
+
+            text_extractor = LocalTextExtractor()
+            prepare_remote_images = (
+                _recognition_policy.mode is not RecognitionMode.LOCAL
+            )
+
         preflight = CandidatePreflight(
             api=self,
             extractor=_extractor,
@@ -2724,6 +2738,8 @@ class InvoiceAppAPI:
             converter_factory=lambda: BoundedUrlRecoveryClient(
                 staging_dir=self._active_staging_path(), timeout_ms=30000
             ),
+            text_extractor=text_extractor,
+            prepare_remote_images=prepare_remote_images,
         )
         remote = SharedRuntimeRemoteExtractor(
             owner_extractor=_extractor,

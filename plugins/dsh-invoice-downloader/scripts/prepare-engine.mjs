@@ -30,6 +30,7 @@ const engineSourceFiles = [
   'glm_runtime.py',
   'invoice_domain.py',
   'invoice_extractor.py',
+  'local_text_extractor.py',
   'mailbox_scanner.py',
   'main.py',
   'pairing_engine.py',

@@ -19,6 +19,7 @@ manual_program_runs/
 test_dataset/
 staging/
 tmp/
+:memory:.ses
 .codegraph/
 .codex/
 .runtime/

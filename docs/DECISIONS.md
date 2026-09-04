@@ -22,9 +22,11 @@ Use `mlx-lm` on Apple Silicon with `mlx-community/Qwen3-1.7B-4bit` as the defaul
 
 ## DEC-003 — RapidOCR is the local OCR engine
 
-**Status:** Accepted, partially present
+**Status:** Accepted, partially implemented
 
 Use RapidOCR with ONNX Runtime only when direct XML/PDF text extraction is insufficient. Preserve OCR text, bounding boxes, and confidence. The DSH adapter already contains a RapidOCR singleton but currently flattens its result to text; the desktop path does not yet use it.
+
+Phase 2B adds the shared desktop evidence layer, native-text gate, lazy run-owned RapidOCR engine, retained OCR geometry/confidence, and disabled ONNX telemetry. Local field extraction from that evidence remains pending.
 
 **Why:** It is small, CPU-capable, and already fits the repository's DSH packaging approach.
 
