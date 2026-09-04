@@ -530,6 +530,7 @@ class CandidatePreflight:
                 "metadata": legacy,
                 "base64_img": base64_img,
                 "text_acquisition": text_acquisition,
+                "deterministic_fields": dict(getattr(probe, "result", None) or {}),
             }
         if effective_candidate is not candidate:
             return RemoteExtractionRequest(effective_candidate)

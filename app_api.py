@@ -777,6 +777,8 @@ class InvoiceAppAPI:
         self._active_temp_dir = None
         self._terminal_frontend_run_id = ""
         self._settings_store = UserSettingsStore()
+        self._local_llm_provider = None
+        self._local_llm_provider_lock = threading.Lock()
         self._requested_save_path = ""
         self._effective_save_path = ""
         self._effective_date_from = ""
@@ -2219,6 +2221,27 @@ class InvoiceAppAPI:
         defaults.update(RecognitionPolicy().to_settings())
         return defaults
 
+    def _get_or_create_local_llm_provider(self, policy):
+        from local_llm_provider import LocalLLMProvider
+
+        with self._local_llm_provider_lock:
+            provider = self._local_llm_provider
+            if (
+                provider is not None
+                and provider.configured_model_source == policy.local_model_source
+            ):
+                provider.max_tokens = policy.local_model_max_tokens
+                return provider
+            provider = LocalLLMProvider(
+                policy.local_model_source,
+                max_tokens=policy.local_model_max_tokens,
+                event_sink=lambda event, payload: self._safe_emit_stage_event(
+                    "local_llm", event, dict(payload)
+                ),
+            )
+            self._local_llm_provider = provider
+            return provider
+
     def load_user_settings(self):
         self._refresh_run_context()
         defaults = self._default_user_settings()
@@ -2675,6 +2698,7 @@ class InvoiceAppAPI:
         _pairing_finalizer=None,
         _owned_extractor=None,
         _recognition_policy=None,
+        _local_provider=None,
     ):
         from app_archive_adapter import AppArchiveAdapter
         from archive_service import ArchiveService
@@ -2752,16 +2776,34 @@ class InvoiceAppAPI:
         )
         recognizer = remote
         if _recognition_policy is not None:
-            from recognition_router import ModeAwareRecognitionExtractor
+            from recognition_router import (
+                LocalEvidenceRecognitionExtractor,
+                ModeAwareRecognitionExtractor,
+            )
 
             def _prepared_artifact_path(candidate):
                 with sidecar_lock:
                     prepared = sidecar.get(candidate.identity.document_id, {})
                     return str(prepared.get("pdf_path") or candidate.source_path)
 
+            local_recognizer = None
+            if _recognition_policy.uses_local_recognition:
+                if _local_provider is None:
+                    _local_provider = self._get_or_create_local_llm_provider(
+                        _recognition_policy
+                    )
+                local_recognizer = LocalEvidenceRecognitionExtractor(
+                    provider=_local_provider,
+                    owner_extractor=_extractor,
+                    sidecar=sidecar,
+                    sidecar_lock=sidecar_lock,
+                    artifact_path_resolver=_prepared_artifact_path,
+                )
+
             recognizer = ModeAwareRecognitionExtractor(
                 policy=_recognition_policy,
                 cloud_extractors={CloudProviderId.GLM: remote},
+                local_extractor=local_recognizer,
                 artifact_path_resolver=_prepared_artifact_path,
             )
 

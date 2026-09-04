@@ -1,14 +1,16 @@
 # InvoiceFlowAI Architecture
 
-This document describes the implementation at baseline commit `1b884e96775b04acc35518ddcd52be8abe6b00fd`. It does not claim that the planned local-first MLX design is already implemented.
+This document records the baseline at commit `1b884e96775b04acc35518ddcd52be8abe6b00fd` and the checked-in post-baseline changes listed below.
 
 ## Post-baseline local-first foundation
 
 Phase 2A adds `recognition_policy.py` and `recognition_router.py`. Desktop run admission now freezes a normalized recognition policy and passes it to the extraction session. Missing or invalid mode settings resolve to Local, and Local admission requires mailbox credentials but no AI API key.
 
-The existing GLM extractor is reachable from the desktop run path only when the frozen policy explicitly permits the selected GLM provider. Local and Hybrid do not bypass the unfinished local provider: a document that deterministic parsing cannot yet resolve enters manual review with `LOCAL_RECOGNITION_NOT_READY`.
+The existing GLM extractor is reachable from the desktop run path only when the frozen policy explicitly permits the selected GLM provider. Local sends an unresolved deterministic candidate only to the local provider and keeps local failures in review. Hybrid runs the same local stage first and may reach the selected GLM adapter only after the local stage returns a non-resolved outcome; the complete Phase 2D validation/confidence gate is still pending.
 
-Phase 2B adds `local_text_extractor.py`. It can create immutable local evidence from XML, usable native PDF text, or RapidOCR output. In the desktop pipeline, valid XML remains on the existing deterministic path while unresolved Local/Hybrid PDF and JPG/JPEG/PNG candidates use the new evidence layer. OCR evidence retains page indexes, bounding boxes, per-span confidence, and aggregate confidence. The RapidOCR instance is loaded lazily once per run-owned extractor, and ONNX Runtime telemetry is disabled before initialization. Local mode does not prepare the Base64 image payload used by cloud vision extraction. MLX/Qwen extraction, validation statuses, complete Hybrid fallback, DeepSeek adaptation, and OFD ingestion remain pending.
+Phase 2B adds `local_text_extractor.py`. It can create immutable local evidence from XML, usable native PDF text, or RapidOCR output. In the desktop pipeline, valid XML remains on the existing deterministic path while unresolved Local/Hybrid PDF and JPG/JPEG/PNG candidates use the new evidence layer. OCR evidence retains page indexes, bounding boxes, per-span confidence, and aggregate confidence. The RapidOCR instance is loaded lazily once per run-owned extractor, and ONNX Runtime telemetry is disabled before initialization. Local mode does not prepare the Base64 image payload used by cloud vision extraction.
+
+Phase 2C adds `local_llm_provider.py` and wires an application-cached `LocalLLMProvider` into the existing mode-aware unresolved seam. The same configured provider is reused across runs, while the MLX runtime and model still load only when the first unresolved invoice needs them. Qwen3 thinking is disabled in the chat template, and generation is greedy and token-bounded. The adapter accepts exactly the existing invoice JSON keys, rejects wrappers/schema drift, and rejects factual model fields that cannot be grounded in the local source text. Deterministic values remain authoritative during merge, with field provenance and conflicts retained in extraction trace data. Validation statuses, DeepSeek adaptation, per-file re-recognition, and OFD ingestion remain pending.
 
 ## Runtime Surfaces
 
@@ -123,10 +125,10 @@ The desktop UI exports an on-demand `.xlsx` workbook with classification summary
 
 The narrowest future implementation path is to keep orchestration and archive code stable and change the extraction boundary:
 
-1. Introduce an explicit recognition mode/provider configuration at admission and settings boundaries.
-2. Add reusable local text acquisition: XML, valid PDF text, then RapidOCR only for images or textless PDFs.
-3. Add a run-owned `LocalLLMProvider` whose MLX model loads once and converts text into the existing invoice payload.
-4. Merge deterministic parser and local-model fields, validate with `Decimal` and strict formats, and map results to accepted/review/failed.
-5. Invoke existing GLM/DeepSeek providers only in explicit Hybrid or Cloud modes.
+1. **Implemented:** explicit recognition mode/provider configuration at admission and settings boundaries.
+2. **Implemented:** reusable local text acquisition: XML, valid PDF text, then RapidOCR only for images or textless PDFs.
+3. **Implemented:** a run-owned `LocalLLMProvider` whose MLX model loads once and converts text into the existing invoice payload.
+4. **In progress:** merge deterministic parser and local-model fields, validate with `Decimal` and strict formats, and map results to accepted/review/failed. Phase 2C provides grounded merge provenance; Phase 2D owns the complete validation/status gate.
+5. **Partially implemented:** invoke existing GLM/DeepSeek providers only in explicit Hybrid or Cloud modes. GLM is policy-guarded; the DeepSeek adapter is pending.
 
 This keeps `CandidatePipeline`, `ExtractionPipeline`, `ArchiveService`, pairing, naming, reporting, and most UI behavior reusable.

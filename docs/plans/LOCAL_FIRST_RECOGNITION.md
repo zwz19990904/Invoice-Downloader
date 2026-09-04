@@ -1,6 +1,6 @@
 # Local-First Recognition Execution Plan
 
-**Status:** Phase 2B complete; Phase 2C is next
+**Status:** Phase 2C complete; Phase 2D is next
 
 **Planning baseline:** `e02fa43`
 
@@ -21,7 +21,9 @@
 - [x] Preserve OCR page indexes, bounding boxes, per-span confidence, and aggregate confidence.
 - [x] Disable ONNX Runtime telemetry before local OCR initialization.
 - [x] Keep Local-mode candidates from preparing cloud image payloads.
-- [ ] Add MLX/Qwen local field extraction (Phase 2C).
+- [x] Add MLX/Qwen local field extraction with lazy single-load lifecycle.
+- [x] Enforce exact JSON schema, source grounding, and deterministic merge provenance.
+- [x] Wire the local provider into Local/Hybrid without downloading model weights in tests.
 
 ## 1. Non-negotiable invariants
 
@@ -212,6 +214,8 @@ Expected commit: `feat: add fail-closed recognition policy`
 Expected commit: `feat: add local text evidence acquisition`
 
 ### Phase 2C — Local field extraction
+
+**Complete.**
 
 - Add deterministic/local-model cooperation and merge provenance.
 - Add lazy single-load MLX provider and strict JSON adapter.

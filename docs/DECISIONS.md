@@ -8,15 +8,17 @@ These decisions govern this fork. “Accepted, pending implementation” means f
 
 Local, Hybrid, and Cloud are explicit modes. Local is the default and functions without any AI API key. Cloud transmission cannot be enabled by fallback, migration, or error handling.
 
-Phase 2A implements the fail-closed policy, settings normalization, no-key Local admission, and the desktop GLM guard. Local OCR/LLM extraction remains pending.
+Phase 2A implements the fail-closed policy, settings normalization, no-key Local admission, and the desktop GLM guard. Phases 2B and 2C implement local text evidence plus MLX/Qwen field extraction. Complete validation/status gating remains pending.
 
 **Why:** Invoice contents are sensitive, and the owner prefers a complete local workflow. Explicit modes also make privacy behavior testable.
 
 ## DEC-002 — MLX text model instead of a local vision model
 
-**Status:** Accepted, pending implementation
+**Status:** Accepted, partially implemented
 
 Use `mlx-lm` on Apple Silicon with `mlx-community/Qwen3-1.7B-4bit` as the default model. Support a verified Qwen2.5 1.5B 4-bit alternative and both Hugging Face IDs and local paths. Keep one loaded model instance for repeated invoices.
+
+Phase 2C adds the lazy, application-cached single-load MLX adapter, strict JSON/evidence grounding, local-path support, and model-free tests. The alternate Qwen2.5 model and release-time model distribution remain to be verified.
 
 **Why:** OCR and native document parsing already convert invoice content into text. A small text model is sufficient for schema extraction and is materially lighter than a VLM.
 
@@ -26,15 +28,17 @@ Use `mlx-lm` on Apple Silicon with `mlx-community/Qwen3-1.7B-4bit` as the defaul
 
 Use RapidOCR with ONNX Runtime only when direct XML/PDF text extraction is insufficient. Preserve OCR text, bounding boxes, and confidence. The DSH adapter already contains a RapidOCR singleton but currently flattens its result to text; the desktop path does not yet use it.
 
-Phase 2B adds the shared desktop evidence layer, native-text gate, lazy run-owned RapidOCR engine, retained OCR geometry/confidence, and disabled ONNX telemetry. Local field extraction from that evidence remains pending.
+Phase 2B adds the shared desktop evidence layer, native-text gate, lazy run-owned RapidOCR engine, retained OCR geometry/confidence, and disabled ONNX telemetry. Phase 2C consumes that evidence through the local text-only model provider.
 
 **Why:** It is small, CPU-capable, and already fits the repository's DSH packaging approach.
 
 ## DEC-004 — Deterministic parsing remains authoritative evidence
 
-**Status:** Accepted, partially present
+**Status:** Accepted, partially implemented
 
 Keep existing regex/template/provider parsers. Run deterministic parsing and the local model as cooperating extractors, merge their evidence, and validate conflicts. Do not replace the parser with a model-only path.
+
+Phase 2C keeps the deterministic probe first, lets grounded deterministic fields override model fields, and records field provenance/conflicts. Phase 2D will add the complete deterministic validation and result-status gate.
 
 **Why:** Rules are strong on stable labeled fields and can detect model mistakes; the model adds tolerance for OCR ordering and layout variation.
 
