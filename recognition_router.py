@@ -10,6 +10,7 @@ from local_llm_provider import (
     merge_invoice_fields,
 )
 from local_text_extractor import TextAcquisitionStatus
+from recognition_validation import RecognitionResultValidator
 from recognition_policy import (
     CloudAccessDenied,
     CloudProviderId,
@@ -29,6 +30,7 @@ class LocalEvidenceRecognitionExtractor:
         sidecar: Mapping[str, Mapping[str, Any]],
         sidecar_lock: Any,
         artifact_path_resolver: Callable[[DocumentCandidate], str] | None = None,
+        result_validator: RecognitionResultValidator | None = None,
     ) -> None:
         self.provider = provider
         self.owner_extractor = owner_extractor
@@ -36,6 +38,11 @@ class LocalEvidenceRecognitionExtractor:
         self.sidecar_lock = sidecar_lock
         self.artifact_path_resolver = artifact_path_resolver or (
             lambda candidate: candidate.source_path
+        )
+        self.result_validator = result_validator or RecognitionResultValidator(
+            artifact_path_resolver=lambda candidate, _envelope: str(
+                self.artifact_path_resolver(candidate) or candidate.source_path
+            )
         )
 
     def verified_ceiling(self) -> int:
@@ -49,8 +56,15 @@ class LocalEvidenceRecognitionExtractor:
         trace_context: Mapping[str, Any] | None = None,
     ) -> ExtractionOutcome:
         review_trace = dict(candidate.trace_context)
-        if trace_context:
-            review_trace["local_recognition"] = dict(trace_context)
+        recognition_trace = dict(trace_context or {})
+        recognition_trace.setdefault("provider", "local_mlx")
+        recognition_trace.setdefault("recognition_status", "review")
+        recognition_trace.setdefault("validation_reason_codes", [reason_code])
+        recognition_trace.setdefault(
+            "validation_issues",
+            [{"reason_code": reason_code, "field_name": ""}],
+        )
+        review_trace["recognition"] = recognition_trace
         return ExtractionOutcome(
             candidate=candidate,
             status="manual_review",
@@ -87,6 +101,18 @@ class LocalEvidenceRecognitionExtractor:
         if evidence is None:
             return self._review(candidate, "LOCAL_TEXT_EVIDENCE_UNAVAILABLE")
 
+        evidence_trace = {
+            "provider": "local_mlx",
+            "evidence_source": getattr(
+                evidence.source, "value", str(evidence.source)
+            ),
+            "average_confidence": (
+                str(evidence.average_confidence)
+                if evidence.average_confidence is not None
+                else None
+            ),
+        }
+
         deterministic = {}
         deterministic.update(dict(prepared.get("deterministic_fields") or {}))
         deterministic.update(dict(metadata.get("provider_recovered_fields") or {}))
@@ -96,28 +122,22 @@ class LocalEvidenceRecognitionExtractor:
                 evidence, document_context=metadata
             )
         except LocalLLMProviderError as exc:
-            return self._review(candidate, exc.reason_code)
+            return self._review(
+                candidate, exc.reason_code, trace_context=evidence_trace
+            )
         except Exception:
-            return self._review(candidate, "LOCAL_MODEL_FAILED")
+            return self._review(
+                candidate, "LOCAL_MODEL_FAILED", trace_context=evidence_trace
+            )
 
         merged = merge_invoice_fields(deterministic, model_result.payload)
         trace = {
+            **evidence_trace,
             "engine": "local_mlx_qwen",
             "reason_code": "LOCAL_LLM_STRUCTURED_RESULT",
-            "provider": "local_mlx",
-            "evidence_source": getattr(evidence.source, "value", str(evidence.source)),
-            "average_confidence": (
-                str(evidence.average_confidence)
-                if evidence.average_confidence is not None
-                else None
-            ),
             "field_provenance": merged.trace_provenance(),
             "conflict_fields": list(merged.conflicts),
         }
-        if merged.conflicts:
-            return self._review(
-                candidate, "LOCAL_FIELD_CONFLICT", trace_context=trace
-            )
         try:
             info_json = self.owner_extractor._adapt_extraction_result(
                 dict(merged.payload),
@@ -132,7 +152,7 @@ class LocalEvidenceRecognitionExtractor:
             return self._review(
                 candidate, "LOCAL_MODEL_SCHEMA_ADAPTATION_FAILED", trace_context=trace
             )
-        return ExtractionOutcome.resolved(
+        return self.result_validator.validate_envelope(
             candidate,
             {
                 "pdf_path": pdf_path,
@@ -141,6 +161,10 @@ class LocalEvidenceRecognitionExtractor:
                 "extraction_trace": trace,
                 "extraction_timing": {},
             },
+            evidence,
+            conflicts=merged.conflicts,
+            provenance=merged.trace_provenance(),
+            provider="local_mlx",
         )
 
 
@@ -154,12 +178,14 @@ class ModeAwareRecognitionExtractor:
         cloud_extractors: Mapping[object, Callable[[DocumentCandidate], Any]],
         local_extractor: Callable[[DocumentCandidate], Any] | None = None,
         artifact_path_resolver: Callable[[DocumentCandidate], str] | None = None,
+        cloud_result_validator: Callable[[Any], Any] | None = None,
     ) -> None:
         self.policy = policy
         self.local_extractor = local_extractor
         self.artifact_path_resolver = artifact_path_resolver or (
             lambda candidate: candidate.source_path
         )
+        self.cloud_result_validator = cloud_result_validator
         self.cloud_extractors = {
             provider: extractor
             for key, extractor in cloud_extractors.items()
@@ -215,7 +241,10 @@ class ModeAwareRecognitionExtractor:
                     self.artifact_path_resolver(candidate) or candidate.source_path
                 ),
             )
-        return extractor(candidate)
+        result = extractor(candidate)
+        if self.cloud_result_validator is not None:
+            return self.cloud_result_validator(result)
+        return result
 
     def __call__(self, candidate: DocumentCandidate) -> Any:
         if self.policy.mode is RecognitionMode.CLOUD:

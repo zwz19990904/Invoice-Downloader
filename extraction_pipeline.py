@@ -279,14 +279,18 @@ class ExtractionPipeline:
             completed += 1
             if self._trace_sink is not None:
                 try:
-                    self._trace_sink(
-                        {
-                            "document_id": outcome.candidate.identity.document_id,
-                            "sequence": outcome.candidate.sequence,
-                            "status": outcome.status,
-                            "reason_code": outcome.reason_code,
-                        }
+                    event = {
+                        "document_id": outcome.candidate.identity.document_id,
+                        "sequence": outcome.candidate.sequence,
+                        "status": outcome.status,
+                        "reason_code": outcome.reason_code,
+                    }
+                    recognition = outcome.to_legacy_trace_context().get(
+                        "recognition"
                     )
+                    if isinstance(recognition, Mapping):
+                        event["recognition"] = dict(recognition)
+                    self._trace_sink(event)
                 except Exception:
                     pass
             if _emit_progress_events:

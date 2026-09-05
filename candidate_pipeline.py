@@ -320,6 +320,8 @@ class CandidatePreflight:
         sidecar_lock: Any,
         converter_factory: Any,
         text_extractor: Any = None,
+        resolved_validator: Any = None,
+        continue_after_validation_failure: bool = False,
         prepare_remote_images: bool = True,
     ) -> None:
         self.api = api
@@ -329,6 +331,10 @@ class CandidatePreflight:
         self.sidecar_lock = sidecar_lock
         self.converter_factory = converter_factory
         self.text_extractor = text_extractor
+        self.resolved_validator = resolved_validator
+        self.continue_after_validation_failure = bool(
+            continue_after_validation_failure
+        )
         self.prepare_remote_images = bool(prepare_remote_images)
         self.seen_identities: set[str] = set()
         self.seen_history_keys: set[str] = set()
@@ -490,26 +496,54 @@ class CandidatePreflight:
                     effective_candidate, legacy, "URL_PREFLIGHT_FAILED"
                 )
             raise
+        text_acquisition = None
+        deterministic_fields = dict(getattr(probe, "result", None) or {})
         if probe.status == "resolved":
-            return ExtractionOutcome.resolved(
-                effective_candidate,
-                {
-                    "pdf_path": pdf_path,
-                    "metadata": legacy,
-                    "info_json": probe.result,
-                    "extraction_trace": {
-                        "engine": probe.engine,
-                        "reason_code": probe.reason_code,
-                    },
-                    "extraction_timing": {},
+            envelope = {
+                "pdf_path": pdf_path,
+                "metadata": legacy,
+                "info_json": probe.result,
+                "extraction_trace": {
+                    "engine": probe.engine,
+                    "reason_code": probe.reason_code,
                 },
-            )
-        if probe.status != "needs_remote":
+                "extraction_timing": {},
+            }
+            if self.resolved_validator is not None:
+                text_acquisition = None
+                if self.text_extractor is not None:
+                    try:
+                        text_acquisition = self.text_extractor.acquire(pdf_path)
+                    except Exception:
+                        text_acquisition = None
+                validated = self.resolved_validator(
+                    effective_candidate, envelope, text_acquisition
+                )
+                if (
+                    getattr(validated, "status", None) == "resolved"
+                    or not self.continue_after_validation_failure
+                ):
+                    return validated
+                recognition = validated.to_legacy_trace_context().get(
+                    "recognition", {}
+                )
+                invalid_fields = {
+                    str(issue.get("field_name") or "")
+                    for issue in recognition.get("validation_issues", ())
+                    if isinstance(issue, dict) and issue.get("field_name")
+                }
+                deterministic_fields = {
+                    field_name: value
+                    for field_name, value in deterministic_fields.items()
+                    if field_name not in invalid_fields
+                }
+            else:
+                return ExtractionOutcome.resolved(effective_candidate, envelope)
+        elif probe.status != "needs_remote":
             return self.terminal(
                 effective_candidate, probe.reason_code or "LOCAL_PREFLIGHT_FAILED"
             )
-        text_acquisition = None
-        if self.text_extractor is not None:
+        if text_acquisition is None and self.text_extractor is not None:
             text_acquisition = self.text_extractor.acquire(pdf_path)
 
         base64_img = None
@@ -530,7 +564,7 @@ class CandidatePreflight:
                 "metadata": legacy,
                 "base64_img": base64_img,
                 "text_acquisition": text_acquisition,
-                "deterministic_fields": dict(getattr(probe, "result", None) or {}),
+                "deterministic_fields": deterministic_fields,
             }
         if effective_candidate is not candidate:
             return RemoteExtractionRequest(effective_candidate)

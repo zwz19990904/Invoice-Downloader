@@ -2741,6 +2741,7 @@ class InvoiceAppAPI:
                 )
 
         text_extractor = None
+        result_validator = None
         prepare_remote_images = True
         if (
             _recognition_policy is not None
@@ -2751,6 +2752,12 @@ class InvoiceAppAPI:
             text_extractor = LocalTextExtractor()
             prepare_remote_images = (
                 _recognition_policy.mode is not RecognitionMode.LOCAL
+            )
+        if _recognition_policy is not None:
+            from recognition_validation import RecognitionResultValidator
+
+            result_validator = RecognitionResultValidator(
+                confidence_threshold=_recognition_policy.local_confidence_threshold
             )
 
         preflight = CandidatePreflight(
@@ -2763,6 +2770,8 @@ class InvoiceAppAPI:
                 staging_dir=self._active_staging_path(), timeout_ms=30000
             ),
             text_extractor=text_extractor,
+            resolved_validator=result_validator,
+            continue_after_validation_failure=_recognition_policy is not None,
             prepare_remote_images=prepare_remote_images,
         )
         remote = SharedRuntimeRemoteExtractor(
@@ -2798,6 +2807,19 @@ class InvoiceAppAPI:
                     sidecar=sidecar,
                     sidecar_lock=sidecar_lock,
                     artifact_path_resolver=_prepared_artifact_path,
+                    result_validator=result_validator,
+                )
+
+            def _validate_cloud_result(outcome):
+                if result_validator is None:
+                    return outcome
+                provider = (
+                    _recognition_policy.cloud_provider.value
+                    if _recognition_policy.cloud_provider is not None
+                    else ""
+                )
+                return result_validator.validate_existing(
+                    outcome, provider=provider
                 )
 
             recognizer = ModeAwareRecognitionExtractor(
@@ -2805,6 +2827,7 @@ class InvoiceAppAPI:
                 cloud_extractors={CloudProviderId.GLM: remote},
                 local_extractor=local_recognizer,
                 artifact_path_resolver=_prepared_artifact_path,
+                cloud_result_validator=_validate_cloud_result,
             )
 
         def _progress(completed, total, percent):

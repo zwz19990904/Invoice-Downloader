@@ -1,6 +1,6 @@
 # Local-First Recognition Execution Plan
 
-**Status:** Phase 2C complete; Phase 2D is next
+**Status:** Phase 2D complete; Phase 2E is next
 
 **Planning baseline:** `e02fa43`
 
@@ -24,6 +24,9 @@
 - [x] Add MLX/Qwen local field extraction with lazy single-load lifecycle.
 - [x] Enforce exact JSON schema, source grounding, and deterministic merge provenance.
 - [x] Wire the local provider into Local/Hybrid without downloading model weights in tests.
+- [x] Validate deterministic, local-model, and authorized cloud results through one fail-closed gate.
+- [x] Map validation to accepted/review/failed while preserving the existing pipeline statuses.
+- [x] Use Decimal for amount/tax/total checks and retain safe reason-code diagnostics.
 
 ## 1. Non-negotiable invariants
 
@@ -224,6 +227,8 @@ Expected commit: `feat: add local text evidence acquisition`
 Expected commit: `feat: add mlx local invoice provider`
 
 ### Phase 2D — Validation and statuses
+
+**Complete.**
 
 - Add Decimal validation, conflict detection, required-field rules, and status mapping.
 - Route review safely through existing retention/archive behavior.

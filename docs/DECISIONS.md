@@ -4,11 +4,11 @@ These decisions govern this fork. “Accepted, pending implementation” means f
 
 ## DEC-001 — Local recognition is the default
 
-**Status:** Accepted, partially implemented
+**Status:** Accepted, implemented for the desktop recognition pipeline
 
 Local, Hybrid, and Cloud are explicit modes. Local is the default and functions without any AI API key. Cloud transmission cannot be enabled by fallback, migration, or error handling.
 
-Phase 2A implements the fail-closed policy, settings normalization, no-key Local admission, and the desktop GLM guard. Phases 2B and 2C implement local text evidence plus MLX/Qwen field extraction. Complete validation/status gating remains pending.
+Phase 2A implements the fail-closed policy, settings normalization, no-key Local admission, and the desktop GLM guard. Phases 2B through 2D implement local text evidence, MLX/Qwen field extraction, and the fail-closed validation/status gate. The remaining provider and review actions are tracked separately.
 
 **Why:** Invoice contents are sensitive, and the owner prefers a complete local workflow. Explicit modes also make privacy behavior testable.
 
@@ -24,9 +24,9 @@ Phase 2C adds the lazy, application-cached single-load MLX adapter, strict JSON/
 
 ## DEC-003 — RapidOCR is the local OCR engine
 
-**Status:** Accepted, partially implemented
+**Status:** Accepted, implemented for the desktop recognition pipeline
 
-Use RapidOCR with ONNX Runtime only when direct XML/PDF text extraction is insufficient. Preserve OCR text, bounding boxes, and confidence. The DSH adapter already contains a RapidOCR singleton but currently flattens its result to text; the desktop path does not yet use it.
+Use RapidOCR with ONNX Runtime only when direct XML/PDF text extraction is insufficient. Preserve OCR text, bounding boxes, and confidence. The DSH adapter has its own RapidOCR singleton and currently flattens its result to text.
 
 Phase 2B adds the shared desktop evidence layer, native-text gate, lazy run-owned RapidOCR engine, retained OCR geometry/confidence, and disabled ONNX telemetry. Phase 2C consumes that evidence through the local text-only model provider.
 
@@ -34,11 +34,11 @@ Phase 2B adds the shared desktop evidence layer, native-text gate, lazy run-owne
 
 ## DEC-004 — Deterministic parsing remains authoritative evidence
 
-**Status:** Accepted, partially implemented
+**Status:** Accepted, implemented for the desktop recognition pipeline
 
 Keep existing regex/template/provider parsers. Run deterministic parsing and the local model as cooperating extractors, merge their evidence, and validate conflicts. Do not replace the parser with a model-only path.
 
-Phase 2C keeps the deterministic probe first, lets grounded deterministic fields override model fields, and records field provenance/conflicts. Phase 2D will add the complete deterministic validation and result-status gate.
+Phase 2C keeps the deterministic probe first, lets grounded deterministic fields override model fields, and records field provenance/conflicts. Phase 2D validates those results, excludes invalid deterministic fields before retry, and sends unresolved conflicts to review.
 
 **Why:** Rules are strong on stable labeled fields and can detect model mistakes; the model adds tolerance for OCR ordering and layout variation.
 
@@ -62,9 +62,11 @@ New providers output the existing legacy mapping and pass through `InvoiceRecord
 
 ## DEC-007 — Financial validation uses Decimal and fail-closed statuses
 
-**Status:** Accepted, partially present
+**Status:** Accepted, implemented for new recognition results
 
 Use `Decimal` for monetary parsing, arithmetic, comparison, and new exports. Validate totals, dates, invoice numbers, tax IDs, required fields, evidence conflicts, and confidence. Map results to accepted, review, or failed; never guess to increase throughput.
+
+Phase 2D implements this gate with a `0.01` money tolerance. Invoice-number rules preserve the repository's supported domestic, travel-service, and foreign formats. Unified social credit codes use the GB 32100 character/check-code rule; legacy taxpayer identifiers remain syntactically accepted. Legacy export code that still sums floats remains separate technical debt.
 
 **Why:** Binary floating point and silent field completion are inappropriate for reimbursement data. `invoice_domain.py` already provides the Decimal boundary, although some legacy export code still sums floats.
 
